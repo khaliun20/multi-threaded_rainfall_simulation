@@ -12,4 +12,4 @@ $(EXECUTABLE): $(SOURCE)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 clean:
-	rm -f $(EXECUTABLE)
+	rm -f $(EXECUTABLE) rainfall_table.txt
