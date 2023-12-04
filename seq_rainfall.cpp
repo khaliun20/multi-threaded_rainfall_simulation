@@ -28,8 +28,12 @@ void absorb(std::vector<std::vector<double>> &aboveland_drops,
             double absorb_rate){
     for (int i = 0; i < aboveland_drops.size(); i++) {
         for (int j = 0; j < aboveland_drops[0].size(); j++) {
-            aboveland_drops[i][j] = aboveland_drops[i][j] - absorb_rate;
-            absorbed_drops[i][j] = absorbed_drops[i][j] + absorb_rate;
+            if (aboveland_drops[i][j] > 0.0) {
+                double to_absorb = std::min(aboveland_drops[i][j], absorb_rate);
+                aboveland_drops[i][j] = aboveland_drops[i][j] - to_absorb;
+                absorbed_drops[i][j] = absorbed_drops[i][j] + to_absorb;
+            }
+            
         }     
     }
 
@@ -80,13 +84,13 @@ void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
 
     for (int i =0; i < height; i++){
         for (int j = 0; j <width; j++){
-            if(aboveland_drops[i][j] > 0.0 && trickle_direction[i][j].size() > 0){
+            if( aboveland_drops[i][j]> 0.0 && trickle_direction[i][j].size() > 0){
                 double trickle_amount  = std::min (aboveland_drops[i][j], 1.0);
                 aboveland_drops[i][j] -= trickle_amount;
                 double trickle_per_neighbor = trickle_amount / trickle_direction[i][j].size();
                 for (auto &pair : trickle_direction[i][j]) {
-                    int neighRow = pair.first, neighCol = pair.second;
-                    delta[neighRow][neighCol] += trickle_per_neighbor;
+                    int neighbor_row = pair.first, neighbor_col = pair.second;
+                    delta[neighbor_row][neighbor_col] += trickle_per_neighbor;
                 }
             }
         }
@@ -118,8 +122,6 @@ void run_simulation(int time_steps, double absorb_rate,
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
         trickle_away(aboveland_drops, elevation, height, width, delta, trickle_direction);
         update_after_trickle(aboveland_drops, delta, height, width);
-        //print_matrix(aboveland_drops);
-        //print_matrix(delta);
         
     } else{
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
@@ -159,20 +161,20 @@ int height, int width){
         for (int j = 0; j <width; j++){
             int lowest = INT_MAX; 
             for (const auto& direction : directions) {
-                int neighRow = i + direction[0], neighCol = j + direction[1];
-                if (0 <= neighRow && neighRow < height && 0 <= neighCol && neighCol < width) {
-                    lowest = std::min(lowest, elevation[neighRow][neighCol]);
+                int neighbor_row = i + direction[0], neighbor_col = j + direction[1];
+                if (0 <= neighbor_row && neighbor_row< height && 0 <= neighbor_col && neighbor_col < width) {
+                    lowest = std::min(lowest, elevation[neighbor_row][neighbor_col]);
                 }
             }
             if (elevation[i][j] <= lowest) {
                 continue;
             }
             for (const auto& direction : directions){
-                int neighRow = i + direction[0], neighCol = j + direction[1];
-                if (0 <= neighRow && neighRow < height && 0 <= neighCol && neighCol < width){
-                    int neighVal = elevation[neighRow][neighCol];
+                int neighbor_row = i + direction[0], neighbor_col = j + direction[1];
+                if (0 <= neighbor_row && neighbor_row < height && 0 <= neighbor_col && neighbor_col < width){
+                    int neighVal = elevation[neighbor_row][neighbor_col];
                     if (neighVal== lowest) {
-                        trickle_direction[i][j].push_back({neighRow, neighCol});
+                        trickle_direction[i][j].push_back({neighbor_row, neighbor_col});
                     }
                 }
 
@@ -199,42 +201,44 @@ int main(int argc, char *argv[]){
         std::cerr << "Invalid number of arguments. Expected 4 arguments." << std::endl;
         return EXIT_FAILURE;
     }
+    //handle input arguments
     int time_steps = atoi(argv[1]);
     double absorb_rate = atof(argv[2]);
     std::string dimension = argv[3];
     int height = get_height(dimension);
     int width = get_width(dimension);
     std::string elevation_file = argv[4];
+    
+    //initialize variables
     int not_dry = 1;
-    // create rainfall table
-    std::string filename = "rainfall_table.txt";
     std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> delta(height, std::vector<double>(width));
     std::vector<std::vector<int>> elevation(height, std::vector<int>(width));\
     std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction(height, std::vector<std::vector<std::pair<int, int>>>(width));
 
+    //read the elevation file and compute trickle direction
     get_elevation_data(elevation_file, elevation);
-    std::cout << "Elevation: " << std::endl;
     compute_trickle_direction(elevation, trickle_direction, height, width);
-    std::cout << "Elevation table: " << std::endl;
-    //print_trickle_direction(trickle_direction);
-    
+
+    //start raining! 
+    int total_steps = 0;
+    clock_t start = clock();
     while (time_steps > 0 || check_dryness(aboveland_drops) == 0) {
         run_simulation(time_steps, absorb_rate,aboveland_drops, absorbed_drops, elevation, delta,height, width, trickle_direction);
         time_steps--;
+        total_steps++;
         }
-    print_matrix(aboveland_drops);
+    clock_t end = clock();
+
+    //print results
+    double time_took = double(end - start) / CLOCKS_PER_SEC;
+    std::cout << "Rainfall simulation completed in " << total_steps << " time steps." << std::endl;
+    std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
+    std::cout << std::endl;
+    std::cout << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
+    std::cout << std::endl;
     print_matrix(absorbed_drops);
     return EXIT_SUCCESS;
 }
 
-
-/*
-void run_simulation(int time_steps, double absorb_rate, 
-                        std::string elevation_file,std::vector<std::vector<double>> &aboveland_drops, 
-                        std::vector<std::vector<double>> &absorbed_drops,
-                        std::vector<std::vector<double>> &elevation,
-                        std::vector<std::vector<double>> &delta,
-                        int height, int width)
-*/
