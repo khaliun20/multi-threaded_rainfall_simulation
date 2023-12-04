@@ -4,7 +4,7 @@
 #include <sstream>
 #include <vector> 
 
-void print_rainfall_table();
+
 int get_height(std::string dimension){
     std::stringstream ss(dimension);
     std::string token;
@@ -21,15 +21,16 @@ int get_width(std::string dimension){
 }   
 
 
-
-
-std::vector<std::vector<double>> absorb(std::vector<std::vector<double>> data, float absorb_rate, std::vector<std::vector<double>> & new_data){
-    for (int i = 0; i < data.size(); i++) {
-        for (int j = 0; j < data[0].size(); j++) {
-            new_data[i][j] = data[i][j] - absorb_rate;
+void absorb(std::vector<std::vector<double>> &aboveland_drops, 
+            std::vector<std::vector<double>> &absorbed_drops,
+            double absorb_rate){
+    for (int i = 0; i < aboveland_drops.size(); i++) {
+        for (int j = 0; j < aboveland_drops[0].size(); j++) {
+            aboveland_drops[i][j] = aboveland_drops[i][j] - absorb_rate;
+            absorbed_drops[i][j] = absorbed_drops[i][j] + absorb_rate;
         }     
     }
-    return new_data;
+
 }
 
 
@@ -42,80 +43,134 @@ void print_matrix(std::vector<std::vector<double>> data){
     }
 }
 
-void empty_file(std::string filename){
-    std::ofstream ofs;
-    ofs.open(filename, std::ofstream::out | std::ofstream::trunc);
-    ofs.close();
+
+int check_dryness(std::vector<std::vector<double>> &aboveland_drops){
+    int dry = 1;  
+    for (int i = 0; i < aboveland_drops.size(); i++) {
+        for (int j = 0; j < aboveland_drops[0].size(); j++) {
+            if (aboveland_drops[i][j] > 0.0 ) {
+                dry = 0;
+                break;
+            }
+        }
+        if (dry == 0) {
+            break;
+        }
+    }
+    return dry;
 }
 
-void start_rain(int height, int width, int time_steps, float absorb_rate, std::string elevation_file, std::string filename){
-    std::fstream file (filename, std::ios::in | std::ios::out);
-    if (file.is_open()) {
-        double rain_drop = 1.0;
-        std::vector<std::vector<double>> data(height, std::vector<double>(width));
-        std::vector<std::vector<double>> new_data(height, std::vector<double>(width));
-        
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-                file >> data[i][j];
-                file.ignore();
-            }
+void add_one_drop(std::vector<std::vector<double>> &land){
+    int height = land.size();
+    int width = land[0].size();
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            land[i][j] += 1.0;
         }
-        //print_matrix(data);
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++) {
-                data[i][j] += rain_drop;
-            }
-        }
-        new_data = absorb(data, absorb_rate, new_data);
-        empty_file(filename);
+    }
+}
 
-        file.seekp(0);
-        for (int i = 0; i <height; ++i) {
-            for (int j = 0; j < width; ++j) {
-                file << new_data[i][j];
-                if (j < new_data[i].size() - 1) {
-                    file << " "; 
+void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
+                  std::vector<std::vector<double>> &elevation) {
+    int height = aboveland_drops.size();
+    int width = aboveland_drops[0].size();
+
+    for (int i = 0; i < height; i++) {
+        for (int j = 0; j < width; j++) {
+            if (aboveland_drops[i][j] > 1.0) {
+                // Calculate the number of raindrops that will trickle away
+                double trickle_amount = aboveland_drops[i][j] - 1.0;
+
+                // Calculate the lowest neighbor(s) based on elevation
+                double lowest_neighbor_elevation = elevation[i][j];
+                int lowest_i = i, lowest_j = j;
+
+                if (i > 0 && elevation[i - 1][j] < lowest_neighbor_elevation) {
+                    lowest_neighbor_elevation = elevation[i - 1][j];
+                    lowest_i = i - 1;
+                    lowest_j = j;
                 }
-            }
-            file << std::endl; 
-    }
-        file.close();
-    } else {
-        std::cerr << "Unable to open file." << std::endl;     
-    }
-}
-
-//Create table and initiazlie to 0
-std::fstream create_table(int height, int width, std::string filename) {
-    std::fstream rainfall_table(filename, std::ios::in | std::ios::out);
-    if (rainfall_table.is_open()) {
-        rainfall_table.close();
-        return rainfall_table;
-    } else {
-        rainfall_table.open(filename, std::ios::out);
-        for (int i = 0; i < height; i++) {
-            for (int j = 0; j < width; j++){
-                rainfall_table << 0;
-                if (j < width - 1) {
-                    rainfall_table << " ";
+                if (i < height - 1 && elevation[i + 1][j] < lowest_neighbor_elevation) {
+                    lowest_neighbor_elevation = elevation[i + 1][j];
+                    lowest_i = i + 1;
+                    lowest_j = j;
                 }
+                if (j > 0 && elevation[i][j - 1] < lowest_neighbor_elevation) {
+                    lowest_neighbor_elevation = elevation[i][j - 1];
+                    lowest_i = i;
+                    lowest_j = j - 1;
+                }
+                if (j < width - 1 && elevation[i][j + 1] < lowest_neighbor_elevation) {
+                    lowest_neighbor_elevation = elevation[i][j + 1];
+                    lowest_i = i;
+                    lowest_j = j + 1;
+                }
+
+                // Update the number of raindrops at each lowest neighbor
+                aboveland_drops[lowest_i][lowest_j] += trickle_amount;
+
+                // Update the current point with the remaining raindrops
+                aboveland_drops[i][j] = 1.0;
             }
-            rainfall_table << std::endl;
         }
-        rainfall_table.close();
-        return rainfall_table;
     }
 }
 
-//Print the rainfall table
-void print_rainfall_table() {
-    std::ifstream rainfall_table("rainfall_table.txt");
+void run_simulation(int time_steps, double absorb_rate, 
+                        std::string elevation_file,std::vector<std::vector<double>> &aboveland_drops, 
+                        std::vector<std::vector<double>> &absorbed_drops,
+                        std::vector<std::vector<double>> &elevation){
+    int flag = 0;
+    while (time_steps != 0) { // not dry landscape has water at a point
+        //std::cout << time_steps << std::endl;
+        add_one_drop(aboveland_drops);
+        absorb(aboveland_drops, absorbed_drops, absorb_rate);
+        trickle_away(aboveland_drops, elevation);
+        //print_matrix(land);
+        int dry = check_dryness(aboveland_drops);
+        if (dry == 1) {
+            std::cout << "all points are 0" << std::endl;
+            flag = 1;
+            break;
+        }
+        time_steps--;
+    }
+
+    while (flag == 0) {
+        absorb(aboveland_drops, absorbed_drops, absorb_rate);
+        trickle_away(aboveland_drops,elevation);
+        int dry = check_dryness(aboveland_drops);
+        if (dry == 1) {
+            std::cout << "all points are 0" << std::endl;
+            flag = 1;
+            break;
+        }
+
+    }
+
+}
+
+void get_elevation_data(const std::string& elevation_file, std::vector<std::vector<double>>& elevation) {
+    std::ifstream file(elevation_file);
+    if (!file) {
+        std::cerr << "Failed to open elevation file: " << elevation_file << std::endl;
+        return;
+    }
+
     std::string line;
-    while (std::getline(rainfall_table, line)) {
-        std::cout << line << std::endl;
+    int row = 0;
+    while (std::getline(file, line)) {
+        std::istringstream iss(line);
+        double value;
+        int col = 0;
+        while (iss >> value) {
+            elevation[row][col] = value;
+            col++;
+        }
+        row++;
     }
-    rainfall_table.close();
+
+    file.close();
 }
 
 int main(int argc, char *argv[]){
@@ -129,18 +184,16 @@ int main(int argc, char *argv[]){
     int height = get_height(dimension);
     int width = get_width(dimension);
     std::string elevation_file = argv[4];
-
     // create rainfall table
     std::string filename = "rainfall_table.txt";
-    std::fstream rainfall_table = create_table(height, width, filename);  
-    
-    //process rain drops  
-    for (int i = 0; i < time_steps; i++){
-        start_rain(height, width, time_steps, absorb_rate, elevation_file, filename);
-        print_rainfall_table();
-    }
-
-    //print_rainfall_table();
+    std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
+    std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
+    std::vector<std::vector<double>> elevation(height, std::vector<double>(width));\
+    get_elevation_data(elevation_file, elevation);
+    print_matrix(elevation);
+    run_simulation(time_steps, absorb_rate, elevation_file, aboveland_drops, absorbed_drops, elevation);
+    print_matrix(aboveland_drops);
+    print_matrix(absorbed_drops);
     return EXIT_SUCCESS;
 }
 
