@@ -43,7 +43,7 @@ void print_matrix(std::vector<std::vector<double>> data){
     }
 }
 
-
+//return 1 if dry, 0 if not dry
 int check_dryness(std::vector<std::vector<double>> &aboveland_drops){
     int dry = 1;  
     for (int i = 0; i < aboveland_drops.size(); i++) {
@@ -121,33 +121,19 @@ void run_simulation(int time_steps, double absorb_rate,
                         std::vector<std::vector<double>> &absorbed_drops,
                         std::vector<std::vector<double>> &elevation){
     int flag = 0;
-    while (time_steps != 0) { // not dry landscape has water at a point
+    if (time_steps > 0){ // not dry landscape has water at a point
+        time_steps--;
         //std::cout << time_steps << std::endl;
         add_one_drop(aboveland_drops);
+        //print_matrix(aboveland_drops);
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
-        trickle_away(aboveland_drops, elevation);
-        //print_matrix(land);
-        int dry = check_dryness(aboveland_drops);
-        if (dry == 1) {
-            std::cout << "all points are 0" << std::endl;
-            flag = 1;
-            break;
-        }
-        time_steps--;
-    }
-
-    while (flag == 0) {
+        //print_matrix(absorbed_drops);
+        //print_matrix(aboveland_drops);
+        //trickle_away(aboveland_drops, elevation);
+        
+    } else{
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
-        trickle_away(aboveland_drops,elevation);
-        int dry = check_dryness(aboveland_drops);
-        if (dry == 1) {
-            std::cout << "all points are 0" << std::endl;
-            flag = 1;
-            break;
-        }
-
     }
-
 }
 
 void get_elevation_data(const std::string& elevation_file, std::vector<std::vector<double>>& elevation) {
@@ -184,14 +170,18 @@ int main(int argc, char *argv[]){
     int height = get_height(dimension);
     int width = get_width(dimension);
     std::string elevation_file = argv[4];
+    int not_dry = 1;
     // create rainfall table
     std::string filename = "rainfall_table.txt";
     std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> elevation(height, std::vector<double>(width));\
     get_elevation_data(elevation_file, elevation);
-    print_matrix(elevation);
-    run_simulation(time_steps, absorb_rate, elevation_file, aboveland_drops, absorbed_drops, elevation);
+    //print_matrix(elevation);
+    while (time_steps > 0 || check_dryness(aboveland_drops) == 0) {
+        run_simulation(time_steps, absorb_rate, elevation_file, aboveland_drops, absorbed_drops, elevation);
+        time_steps--;
+        }
     print_matrix(aboveland_drops);
     print_matrix(absorbed_drops);
     return EXIT_SUCCESS;
