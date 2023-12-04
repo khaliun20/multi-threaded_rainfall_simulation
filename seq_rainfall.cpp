@@ -3,6 +3,8 @@
 #include <string>
 #include <sstream>
 #include <vector> 
+#include <cmath>
+#include <climits>
 
 
 int get_height(std::string dimension){
@@ -71,72 +73,62 @@ void add_one_drop(std::vector<std::vector<double>> &land){
 }
 
 void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
-                  std::vector<std::vector<double>> &elevation) {
-    int height = aboveland_drops.size();
-    int width = aboveland_drops[0].size();
+                  const std::vector<std::vector<int>> &elevation,
+                  int height, int width,
+                  std::vector<std::vector<double>> &delta,
+                  std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction) {
 
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            if (aboveland_drops[i][j] > 1.0) {
-                // Calculate the number of raindrops that will trickle away
-                double trickle_amount = aboveland_drops[i][j] - 1.0;
-
-                // Calculate the lowest neighbor(s) based on elevation
-                double lowest_neighbor_elevation = elevation[i][j];
-                int lowest_i = i, lowest_j = j;
-
-                if (i > 0 && elevation[i - 1][j] < lowest_neighbor_elevation) {
-                    lowest_neighbor_elevation = elevation[i - 1][j];
-                    lowest_i = i - 1;
-                    lowest_j = j;
+    for (int i =0; i < height; i++){
+        for (int j = 0; j <width; j++){
+            if(aboveland_drops[i][j] > 0.0 && trickle_direction[i][j].size() > 0){
+                double trickle_amount  = std::min (aboveland_drops[i][j], 1.0);
+                aboveland_drops[i][j] -= trickle_amount;
+                double trickle_per_neighbor = trickle_amount / trickle_direction[i][j].size();
+                for (auto &pair : trickle_direction[i][j]) {
+                    int neighRow = pair.first, neighCol = pair.second;
+                    delta[neighRow][neighCol] += trickle_per_neighbor;
                 }
-                if (i < height - 1 && elevation[i + 1][j] < lowest_neighbor_elevation) {
-                    lowest_neighbor_elevation = elevation[i + 1][j];
-                    lowest_i = i + 1;
-                    lowest_j = j;
-                }
-                if (j > 0 && elevation[i][j - 1] < lowest_neighbor_elevation) {
-                    lowest_neighbor_elevation = elevation[i][j - 1];
-                    lowest_i = i;
-                    lowest_j = j - 1;
-                }
-                if (j < width - 1 && elevation[i][j + 1] < lowest_neighbor_elevation) {
-                    lowest_neighbor_elevation = elevation[i][j + 1];
-                    lowest_i = i;
-                    lowest_j = j + 1;
-                }
-
-                // Update the number of raindrops at each lowest neighbor
-                aboveland_drops[lowest_i][lowest_j] += trickle_amount;
-
-                // Update the current point with the remaining raindrops
-                aboveland_drops[i][j] = 1.0;
             }
         }
     }
-}
 
+}
+   
+void update_after_trickle(std::vector<std::vector<double>> &absorbed_drops,
+                        std::vector<std::vector<double>> &delta, int height, int width) {
+    for (int i =0; i < height; i++){
+        for (int j = 0; j <width; j++){
+            absorbed_drops[i][j] += delta[i][j];
+            delta[i][j] = 0.0;
+        }
+    }
+    
+
+}
 void run_simulation(int time_steps, double absorb_rate, 
-                        std::string elevation_file,std::vector<std::vector<double>> &aboveland_drops, 
+                        std::vector<std::vector<double>> &aboveland_drops, 
                         std::vector<std::vector<double>> &absorbed_drops,
-                        std::vector<std::vector<double>> &elevation){
+                        std::vector<std::vector<int>> &elevation,
+                        std::vector<std::vector<double>> &delta,
+                        int height, int width,
+                        std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction){
     int flag = 0;
     if (time_steps > 0){ // not dry landscape has water at a point
-        time_steps--;
-        //std::cout << time_steps << std::endl;
         add_one_drop(aboveland_drops);
-        //print_matrix(aboveland_drops);
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
-        //print_matrix(absorbed_drops);
+        trickle_away(aboveland_drops, elevation, height, width, delta, trickle_direction);
+        update_after_trickle(aboveland_drops, delta, height, width);
         //print_matrix(aboveland_drops);
-        //trickle_away(aboveland_drops, elevation);
+        //print_matrix(delta);
         
     } else{
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
+        trickle_away(aboveland_drops, elevation, height ,width, delta, trickle_direction);
+        update_after_trickle(aboveland_drops, delta, height, width);
     }
 }
 
-void get_elevation_data(const std::string& elevation_file, std::vector<std::vector<double>>& elevation) {
+void get_elevation_data(const std::string& elevation_file, std::vector<std::vector<int>>& elevation) {
     std::ifstream file(elevation_file);
     if (!file) {
         std::cerr << "Failed to open elevation file: " << elevation_file << std::endl;
@@ -147,7 +139,7 @@ void get_elevation_data(const std::string& elevation_file, std::vector<std::vect
     int row = 0;
     while (std::getline(file, line)) {
         std::istringstream iss(line);
-        double value;
+        int value;
         int col = 0;
         while (iss >> value) {
             elevation[row][col] = value;
@@ -157,6 +149,49 @@ void get_elevation_data(const std::string& elevation_file, std::vector<std::vect
     }
 
     file.close();
+}
+
+void compute_trickle_direction(std::vector<std::vector<int>>&  elevation,
+std::vector<std::vector<std::vector<std::pair<int, int>>>> &trickle_direction,
+int height, int width){
+    std::vector<std::vector<int>> directions{{-1, 0}, {1, 0}, {0, 1}, {0, -1}};
+    for (int i =0; i < height; i++){
+        for (int j = 0; j <width; j++){
+            int lowest = INT_MAX; 
+            for (const auto& direction : directions) {
+                int neighRow = i + direction[0], neighCol = j + direction[1];
+                if (0 <= neighRow && neighRow < height && 0 <= neighCol && neighCol < width) {
+                    lowest = std::min(lowest, elevation[neighRow][neighCol]);
+                }
+            }
+            if (elevation[i][j] <= lowest) {
+                continue;
+            }
+            for (const auto& direction : directions){
+                int neighRow = i + direction[0], neighCol = j + direction[1];
+                if (0 <= neighRow && neighRow < height && 0 <= neighCol && neighCol < width){
+                    int neighVal = elevation[neighRow][neighCol];
+                    if (neighVal== lowest) {
+                        trickle_direction[i][j].push_back({neighRow, neighCol});
+                    }
+                }
+
+            }
+        }
+
+    }
+}
+
+void print_trickle_direction(std::vector<std::vector<std::vector<std::pair<int, int>>>> &trickle_direction){
+    for (int i = 0; i < trickle_direction.size(); i++) {
+        for (int j = 0; j < trickle_direction[0].size(); j++) {
+            for (auto &pair : trickle_direction[i][j]) {
+                std::cout << "(" << pair.first << ", " << pair.second << ") ";
+            }
+            std::cout << " | ";
+        }
+        std::cout << std::endl;
+    }
 }
 
 int main(int argc, char *argv[]){
@@ -175,11 +210,18 @@ int main(int argc, char *argv[]){
     std::string filename = "rainfall_table.txt";
     std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
-    std::vector<std::vector<double>> elevation(height, std::vector<double>(width));\
+    std::vector<std::vector<double>> delta(height, std::vector<double>(width));
+    std::vector<std::vector<int>> elevation(height, std::vector<int>(width));\
+    std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction(height, std::vector<std::vector<std::pair<int, int>>>(width));
+
     get_elevation_data(elevation_file, elevation);
-    //print_matrix(elevation);
+    std::cout << "Elevation: " << std::endl;
+    compute_trickle_direction(elevation, trickle_direction, height, width);
+    std::cout << "Elevation table: " << std::endl;
+    //print_trickle_direction(trickle_direction);
+    
     while (time_steps > 0 || check_dryness(aboveland_drops) == 0) {
-        run_simulation(time_steps, absorb_rate, elevation_file, aboveland_drops, absorbed_drops, elevation);
+        run_simulation(time_steps, absorb_rate,aboveland_drops, absorbed_drops, elevation, delta,height, width, trickle_direction);
         time_steps--;
         }
     print_matrix(aboveland_drops);
@@ -188,3 +230,11 @@ int main(int argc, char *argv[]){
 }
 
 
+/*
+void run_simulation(int time_steps, double absorb_rate, 
+                        std::string elevation_file,std::vector<std::vector<double>> &aboveland_drops, 
+                        std::vector<std::vector<double>> &absorbed_drops,
+                        std::vector<std::vector<double>> &elevation,
+                        std::vector<std::vector<double>> &delta,
+                        int height, int width)
+*/
