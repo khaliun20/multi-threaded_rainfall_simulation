@@ -1,8 +1,8 @@
 CXX = g++
 CXXFLAGS = -std=c++11
 
-SOURCE = seq_rainfall.cpp
-EXECUTABLE = seq_rainfall
+SOURCE = rainfall_simulation_sequential.cpp
+EXECUTABLE = rainfall_simulation_sequential
 
 # Default target
 all: $(EXECUTABLE)
@@ -12,4 +12,4 @@ $(EXECUTABLE): $(SOURCE)
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 clean:
-	rm -f $(EXECUTABLE) rainfall_table.txt
+	rm -f $(EXECUTABLE)
