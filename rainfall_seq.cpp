@@ -101,7 +101,7 @@ void run_simulation(int time_steps, double absorb_rate,
                         std::vector<std::vector<double>> &delta,
                         int height, int width,
                         std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction){
-    int flag = 0;
+
     if (time_steps > 0){ // not dry landscape has water at a point
         add_one_drop(aboveland_drops);
         absorb(aboveland_drops, absorbed_drops, absorb_rate);
@@ -195,7 +195,6 @@ int main(int argc, char *argv[]){
     std::string elevation_file = argv[4];
     
     //initialize variables
-    int not_dry = 1;
     std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> delta(height, std::vector<double>(width));
@@ -222,6 +221,8 @@ int main(int argc, char *argv[]){
     std::cout << std::endl;
     std::cout << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
     print_matrix(absorbed_drops);
+    std::cout << "Rainfall simulation completed in " << total_steps << " time steps." << std::endl;
+    std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
     return EXIT_SUCCESS;
 }
 
