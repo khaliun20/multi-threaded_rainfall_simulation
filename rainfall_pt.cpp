@@ -9,28 +9,37 @@
 #include <thread>
 #include <mutex>
 
-std::mutex absorb_mutex;
-std::mutex add_one_drop_mutex;
-std::mutex trickle_mutex;
-std::mutex after_trickle_mutex;
+
 void absorb(std::vector<std::vector<double>> &aboveland_drops, 
             std::vector<std::vector<double>> &absorbed_drops,
-            double absorb_rate, int start_row, int end_row, int height, int width){
-    for (int i = start_row; i < end_row; i++) {
-        for (int j = 0; j < width; j++) {
-            if (aboveland_drops[i][j] > 0.0) {
-                //absorb_mutex.lock();
-                double to_absorb = std::min(aboveland_drops[i][j], absorb_rate);
-                aboveland_drops[i][j] = aboveland_drops[i][j] - to_absorb;
-                absorbed_drops[i][j] = absorbed_drops[i][j] + to_absorb;
-                //absorb_mutex.unlock();
+            double absorb_rate, int thread_num) {
+  std::mutex mutex;
+  std::vector<std::thread> threads;
+  int chunk_size = aboveland_drops.size() / thread_num;
+
+  for (int i = 0; i < thread_num; ++i) {
+    int start_row = i * chunk_size;
+    int end_row = (i == thread_num - 1) ? aboveland_drops.size() : (i + 1) * chunk_size;
+    threads.emplace_back([&, start_row, end_row] {
+      for (int row = start_row; row < end_row; ++row) {
+        for (int col = 0; col < aboveland_drops[0].size(); ++col) {
+          if (aboveland_drops[row][col] > 0.0) {
+            double to_absorb = std::min(aboveland_drops[row][col], absorb_rate);
+            {
+              std::lock_guard<std::mutex> guard(mutex);
+              aboveland_drops[row][col] -= to_absorb;
+              absorbed_drops[row][col] += to_absorb;
             }
-            
-        }     
-    }
+          }
+        }
+      }
+    });
+  }
 
+  for (auto &thread : threads) {
+    thread.join();
+  }
 }
-
 
 void print_matrix(std::vector<std::vector<double>> data){
     for (int i = 0; i < data.size(); i++) {
@@ -59,13 +68,12 @@ int check_dryness(std::vector<std::vector<double>> &aboveland_drops){
 }
 
 
-void add_one_drop(std::vector<std::vector<double>> &land, int height, int width, int start_row, int end_row){
-
-    for (int i = start_row; i < end_row; i++) {
+void add_one_drop(std::vector<std::vector<double>> &land){
+    int height = land.size();
+    int width = land[0].size();
+    for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
-            //add_one_drop_mutex.lock();
             land[i][j] += 1.0;
-            //add_one_drop_mutex.unlock();
         }
     }
 }
@@ -74,38 +82,63 @@ void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
                   const std::vector<std::vector<int>> &elevation,
                   int height, int width,
                   std::vector<std::vector<double>> &delta,
-                  std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction, int start_row, int end_row) {
+                  std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction,
+                  int thread_num) {
+    std::mutex mutex;
+    std::vector<std::thread> threads;
+    int chunk_size = height / thread_num;
 
-    for (int i =start_row; i < end_row; i++){
-        for (int j = 0; j <width; j++){
-            if( aboveland_drops[i][j]> 0.0 && trickle_direction[i][j].size() > 0){
-                double trickle_amount  = std::min (aboveland_drops[i][j], 1.0);
-                aboveland_drops[i][j] -= trickle_amount;
-                double trickle_per_neighbor = trickle_amount / trickle_direction[i][j].size();
-                for (auto &pair : trickle_direction[i][j]) {
-                    int neighbor_row = pair.first, neighbor_col = pair.second;
-                    //trickle_mutex.lock();
-                    delta[neighbor_row][neighbor_col] += trickle_per_neighbor;
-                    //trickle_mutex.unlock();
+    for (int i = 0; i < thread_num; ++i) {
+        int start_row = i * chunk_size;
+        int end_row = (i == thread_num - 1) ? height : (i + 1) * chunk_size;
+        threads.emplace_back([&, start_row, end_row] {
+        for (int row = start_row; row < end_row; ++row) {
+            for (int col = 0; col < width; ++col) {
+            if (aboveland_drops[row][col] > 0.0 && trickle_direction[row][col].size() > 0) {
+                double trickle_amount  = std::min (aboveland_drops[row][col], 1.0);
+                std::lock_guard<std::mutex> guard(mutex);
+                aboveland_drops[row][col] -= trickle_amount;
+                double trickle_per_neighbor = trickle_amount / trickle_direction[row][col].size();
+                for (auto &pair : trickle_direction[row][col]) {
+                    delta[pair.first][pair.second] += trickle_per_neighbor;
                 }
+                
+            }
             }
         }
+        });
     }
 
+  for (auto &thread : threads) {
+    thread.join();
+  }
 }
    
 void update_after_trickle(std::vector<std::vector<double>> &absorbed_drops,
-                        std::vector<std::vector<double>> &delta, int height, int width, int start_row, int end_row) {
-    for (int i =start_row; i < end_row; i++){
-        for (int j = 0; j < width; j++){
-            //after_trickle_mutex.lock();
-            absorbed_drops[i][j] += delta[i][j];
-            delta[i][j] = 0.0;
-           // after_trickle_mutex.unlock();
-        }
-    }
-    
+                          std::vector<std::vector<double>> &delta, int height, int width, int thread_num) {
+  std::mutex mutex;
+  std::vector<std::thread> threads;
+  int chunk_size = height / thread_num;
 
+  for (int i = 0; i < thread_num; ++i) {
+    int start_row = i * chunk_size;
+    int end_row = (i == thread_num - 1) ? height : (i + 1) * chunk_size;
+    threads.emplace_back([&, start_row, end_row] {
+      for (int row = start_row; row < end_row; ++row) {
+        for (int col = 0; col < width; ++col) {
+          {
+            std::lock_guard<std::mutex> guard(mutex);
+            absorbed_drops[row][col] += delta[row][col];
+            delta[row][col] = 0.0;
+          }
+        }
+      }
+    });
+  }
+
+  for (auto &thread : threads) {
+    thread.join();
+  }
 }
 void run_simulation(int time_steps, double absorb_rate, 
                         std::vector<std::vector<double>> &aboveland_drops, 
@@ -115,85 +148,17 @@ void run_simulation(int time_steps, double absorb_rate,
                         int height, int width,
                         std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction,
                         int thread_num){
-    int flag = 0;
-    std::vector<std::thread> threads;
+   int flag = 0;
     if (time_steps > 0){ // not dry landscape has water at a point
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(add_one_drop, std::ref(aboveland_drops), height, width, start_row, end_row));
-        }
-
-        for (auto &thread : threads) {
-            thread.join();
-        }
-        
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(absorb, std::ref(aboveland_drops), std::ref(absorbed_drops), absorb_rate, start_row, end_row, height, width));
-        }
-        for (auto &thread : threads) {
-            thread.join();
-        }
-
-        
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(trickle_away, std::ref(aboveland_drops), std::ref(elevation), height, width, std::ref(delta), std::ref(trickle_direction),start_row, end_row));
-        }
-        for (auto &thread : threads) {
-            thread.join();
-        }
-
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(update_after_trickle, std::ref(absorbed_drops), std::ref(delta), height, width, start_row, end_row));
-        }
-        for (auto &thread : threads) {
-            thread.join();
-        }
-
-
+        add_one_drop(aboveland_drops);
+        absorb(aboveland_drops, absorbed_drops, absorb_rate, thread_num);
+        trickle_away(aboveland_drops, elevation, height, width, delta, trickle_direction,thread_num);
+        update_after_trickle(aboveland_drops, delta, height, width, thread_num);
         
     } else{
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(absorb, std::ref(aboveland_drops), std::ref(absorbed_drops), absorb_rate, start_row, end_row, height, width));
-        }
-        for (auto &thread : threads) {
-            thread.join();
-        }
-
-        
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(trickle_away, std::ref(aboveland_drops), std::ref(elevation), height, width, std::ref(delta), std::ref(trickle_direction),start_row, end_row));
-        }
-        for (auto &thread : threads) {
-            thread.join();
-        }
-
-        threads.clear();
-        for (int i = 0 ; i < thread_num; i++){
-            int start_row = i * height / thread_num;
-            int end_row = (i + 1) * height / thread_num;
-            threads.push_back(std::thread(update_after_trickle, std::ref(absorbed_drops), std::ref(delta), height, width, start_row, end_row));
-        }
-        for (auto &thread : threads) {
-            thread.join();
-        }
-
+        absorb(aboveland_drops, absorbed_drops, absorb_rate, thread_num);
+        trickle_away(aboveland_drops, elevation, height ,width, delta, trickle_direction, thread_num);
+        update_after_trickle(aboveland_drops, delta, height, width, thread_num);
     }
 }
 
@@ -305,7 +270,5 @@ int main(int argc, char *argv[]){
     std::cout << std::endl;
     std::cout << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
     print_matrix(absorbed_drops);
-
-    std::cout << check_dryness(aboveland_drops)<<std::endl;
     return EXIT_SUCCESS;
 }
