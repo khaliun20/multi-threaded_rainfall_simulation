@@ -181,19 +181,14 @@ void RainfallSimulation::updateAfterTrickle(int i, int j) {
     delta[i][j] = 0.0;
 }
 
+
 void RainfallSimulation::runSimulationThread(int index) {
-    std::cout << "Thread " << index << " started." << std::endl;
     int rows_per_thread = height / thread_num;
     int start_row = index * rows_per_thread;
     int end_row = (index + 1) * rows_per_thread;
     int step = 0; 
-    std::cout << "Thread " << index << " start row: " << start_row << std::endl;
     while (1) {
-        //mtx.lock();
         step++;
-        //mtx.unlock();
-        std::cout << "Thread " << index << " step: " << step << std::endl;
-        int local_done = 1;
         for (int i = start_row; i < end_row; i++) {
             for (int j = 0; j < width; j++) {
                 if (step <= time_steps) {
@@ -201,29 +196,36 @@ void RainfallSimulation::runSimulationThread(int index) {
                 }
                 absorb(i, j);
                 trickleAway(i, j);
+            }
+        }
+
+        pthread_barrier_wait(&barrier);
+
+        int local_done = 1;
+        for (int i = start_row; i < end_row; i++) {
+            for (int j = 0; j < width; j++) {
                 updateAfterTrickle(i, j);
                 if (aboveland_drops[i][j] > 0.0) {
                     local_done = 0;
                 }
             }
         }
-        pthread_barrier_wait(&barrier);
-
-        mtx.lock();
+        {
+        std::lock_guard<std::mutex> lock(mtx);
         global_done = global_done && local_done;
-        mtx.unlock();
+        }
         pthread_barrier_wait(&barrier);
         global_done = global_done && local_done;
         if (global_done == 1) {
-            total_steps = step-1;
+            total_steps = step;
             return;
         }
         pthread_barrier_wait(&barrier);
-        mtx.lock();
+        std::lock_guard<std::mutex> lock(mtx);
         global_done = 1;
-        mtx.unlock();
     }
 }
+
 
 void printMatrixToFile(const std::vector<std::vector<double>>& data, std::ostream& os) {
     for (int i = 0; i < data.size(); i++) {
