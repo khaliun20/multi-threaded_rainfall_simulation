@@ -1,6 +1,6 @@
 
 CXX = g++
-CXXFLAGS = -std=c++2a
+CXXFLAGS = -std=c++11 -O3
 
 SOURCE_SEQ = rainfall_seq.cpp
 SOURCE_PARALLEL = rainfall_pt.cpp

@@ -9,8 +9,7 @@
 #include <thread>
 #include <mutex>
 #include <pthread.h>
-#include <barrier> 
-
+#include <atomic>
 
 //return 1 if dry, 0 if not dry
 
@@ -18,7 +17,7 @@
 void print_matrix(std::vector<std::vector<double>> data){
     for (int i = 0; i < data.size(); i++) {
         for (int j = 0; j < data[0].size(); j++) {
-            std::cout<< std::setw(8) << std::setprecision(6) << data[i][j];
+            std::cout << data[i][j] << " ";
         }
         std::cout << std::endl;
     }
@@ -107,29 +106,22 @@ int height, int width){
 }
 
 
-void add_one_drop(std::vector<std::vector<double>> &land, int start_row, int end_row, int width){
-    for (int i = start_row; i < end_row; i++) {
-        for (int j = 0; j < width; j++) {
-            land[i][j] += 1.0;
-        }
-    }
+void add_one_drop(std::vector<std::vector<double>> &land, int i , int j){
+
+     land[i][j] += 1.0;
 }
 
 void absorb(std::vector<std::vector<double>> &aboveland_drops, 
             std::vector<std::vector<double>> &absorbed_drops,
-            double absorb_rate, int start_row, int end_row, int width){
-    for (int i = start_row; i < end_row; i++) {
-        for (int j = 0; j < width; j++) {
-            if (aboveland_drops[i][j] > 0.0) {
-                double to_absorb = std::min(aboveland_drops[i][j], absorb_rate);
-                aboveland_drops[i][j] = aboveland_drops[i][j] - to_absorb;
-                absorbed_drops[i][j] = absorbed_drops[i][j] + to_absorb;
-            }
+            double absorb_rate, int i, int j){
+        if (aboveland_drops[i][j] > 0.0) {
+            double to_absorb = std::min(aboveland_drops[i][j], absorb_rate);
+            aboveland_drops[i][j] = aboveland_drops[i][j] - to_absorb;
+            absorbed_drops[i][j] = absorbed_drops[i][j] + to_absorb;
+        }
+        
             
-        }     
     }
-
-}
 
 
 void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
@@ -137,39 +129,33 @@ void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
                   int height, int width,
                   std::vector<std::vector<double>> &delta,
                   std::vector<std::vector<std::vector<std::pair<int, int>>>>& trickle_direction, 
-                  int start_row, int end_row,
+                  int i, int j,
                   std::vector<std::vector<std::shared_ptr<std::mutex>>>& delta_mutexes) {
     
-    for (int i = start_row; i < end_row; i++) {
-        for (int j = 0; j < width; j++) {
-            if (aboveland_drops[i][j] > 0.0 && trickle_direction[i][j].size() > 0) {
-                double trickle_amount = std::min(aboveland_drops[i][j], 1.0);
-                aboveland_drops[i][j] -= trickle_amount;
-                double trickle_per_neighbor = trickle_amount / trickle_direction[i][j].size();
-                for (auto &pair : trickle_direction[i][j]) {
-                    int neighbor_row = pair.first, neighbor_col = pair.second;
-                    // Lock the mutex for the corresponding delta element
-                    (*delta_mutexes[neighbor_row][neighbor_col]).lock();
-                    delta[neighbor_row][neighbor_col] += trickle_per_neighbor;
-                    (*delta_mutexes[neighbor_row][neighbor_col]).unlock();
-                }
+    
+        if (aboveland_drops[i][j] > 0.0 && trickle_direction[i][j].size() > 0) {
+            double trickle_amount = std::min(aboveland_drops[i][j], 1.0);
+            aboveland_drops[i][j] -= trickle_amount;
+            double trickle_per_neighbor = trickle_amount / trickle_direction[i][j].size();
+            for (auto &pair : trickle_direction[i][j]) {
+                int neighbor_row = pair.first, neighbor_col = pair.second;
+                // Lock the mutex for the corresponding delta element
+                (*delta_mutexes[neighbor_row][neighbor_col]).lock();
+                delta[neighbor_row][neighbor_col] += trickle_per_neighbor;
+                (*delta_mutexes[neighbor_row][neighbor_col]).unlock();
             }
         }
-    }
+
 }
    
 void update_after_trickle(std::vector<std::vector<double>> &absorbed_drops,
-                        std::vector<std::vector<double>> &delta, int height, int width, int start_row, int end_row) {
-    for (int i =start_row; i < end_row; i++){
-        for (int j = 0; j < width; j++){
-            absorbed_drops[i][j] += delta[i][j];
-            delta[i][j] = 0.0;
-        }
+                        std::vector<std::vector<double>> &delta, int i, int j) {
+        absorbed_drops[i][j] += delta[i][j];
+        delta[i][j] = 0.0;
     }
     
 
-}
-
+std::mutex mtx;
 void run_simulation(int time_steps, double absorb_rate, 
                         std::vector<std::vector<double>> &aboveland_drops, 
                         std::vector<std::vector<double>> &absorbed_drops,
@@ -179,32 +165,48 @@ void run_simulation(int time_steps, double absorb_rate,
                         std::vector<std::vector<std::vector<std::pair<int, int>>>>&trickle_direction,
                         int thread_num, int& total_steps, int index, 
                         std::vector<std::vector<std::shared_ptr<std::mutex>>>& delta_mutexes,
-                        std::barrier& barrier){
+                        pthread_barrier_t& barrier, int& all_done){
+    int rows_per_thread = height / thread_num;
+    int start_row = index * rows_per_thread;
+    int end_row = (index + 1) * rows_per_thread;
+    
     while(1){
         total_steps++;
-        int rows_per_thread = height / thread_num;
-        int start_row = index * rows_per_thread;
-        int end_row = (index + 1) * rows_per_thread;
     
-        if (time_steps >= total_steps){ // not dry landscape has water at a point
-            add_one_drop(aboveland_drops, start_row, end_row, width);
-            //std::cout << "added 1 drop" << std::endl;   
-            absorb(aboveland_drops, absorbed_drops, absorb_rate, start_row, end_row, width);
-            trickle_away(aboveland_drops, elevation, height, width, delta, trickle_direction,start_row, end_row, delta_mutexes);
-            update_after_trickle(aboveland_drops, delta, height, width, start_row, end_row);
-            
-        } else{
-            absorb(aboveland_drops, absorbed_drops, absorb_rate, start_row, end_row, width);
-            trickle_away(aboveland_drops, elevation, height ,width, delta, trickle_direction,start_row, end_row, delta_mutexes);
-            update_after_trickle(aboveland_drops, delta, height, width, start_row, end_row);
+        for( int i = start_row; i < end_row; i++){
+            for (int j = 0; j < width; j++){
+                if (total_steps <= time_steps){ 
+                    add_one_drop(aboveland_drops, i, j);
+                }
+                absorb(aboveland_drops, absorbed_drops, absorb_rate, i, j);
+                trickle_away(aboveland_drops, elevation, height, width, delta, trickle_direction,i, j, delta_mutexes);
+                
+            }
         }
-        //wait for all threads to finsih work using barrier
-        
-
-        barrier.arrive_and_wait();
-        if (check_dryness(aboveland_drops) == 1){
-            break;
+        pthread_barrier_wait(&barrier);
+        //std::cout<<"waiting to update"<<std::endl;
+        int done = 1;
+        for( int i = start_row; i < end_row; i++){
+            for (int j = 0; j < width; j++){
+                update_after_trickle(aboveland_drops, delta, i ,j);
+                if (aboveland_drops[i][j] > 0.0){
+                    done = 0;
+                }
+            }
         }
+        //print_matrix(aboveland_drops);
+        //std::cout<<"updated"<<std::endl;
+        mtx.lock();
+        all_done  = all_done && done;
+        mtx.unlock();
+        pthread_barrier_wait(&barrier);
+        if (all_done == 1){
+            return;
+        }
+        pthread_barrier_wait(&barrier);
+        all_done = 1;
+      
+       
     }  
 }
 
@@ -224,17 +226,21 @@ int main(int argc, char *argv[]){
     
     //initialize variables
     std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
+
     std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
     std::vector<std::vector<double>> delta(height, std::vector<double>(width));
-    std::vector<std::vector<int>> elevation(height, std::vector<int>(width));\
+    std::vector<std::vector<int>> elevation(height, std::vector<int>(width));
     std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction(height, std::vector<std::vector<std::pair<int, int>>>(width));
     std::vector<std::vector<std::shared_ptr<std::mutex>>> delta_mutexes(height, std::vector<std::shared_ptr<std::mutex>>(width));
+    //print_matrix(aboveland_drops);
+    // print_matrix(absorbed_drops);
     for(auto& mutex_row : delta_mutexes) {
         for(auto& mutex_ptr : mutex_row) {
             mutex_ptr = std::make_shared<std::mutex>();
         }
     }
-    std::barrier barrier(thread_num);
+    pthread_barrier_t barrier;
+    pthread_barrier_init(&barrier, NULL, thread_num);
 
     //read the elevation file and compute trickle direction
     get_elevation_data(elevation_file, elevation);
@@ -242,11 +248,12 @@ int main(int argc, char *argv[]){
 
     //start raining! 
     int total_steps = 0;
+    int all_done = 0;
     std::vector<std::thread> threads;
     clock_t start = clock();
     for (int i = 0; i < thread_num; i++) {
         threads.emplace_back(run_simulation, time_steps, absorb_rate, std::ref(aboveland_drops), std::ref(absorbed_drops),
-                             std::ref(elevation), std::ref(delta),height, width, std::ref(trickle_direction), thread_num, std::ref(total_steps), i, std::ref(delta_mutexes)), std::ref(barrier);
+                             std::ref(elevation), std::ref(delta),height, width, std::ref(trickle_direction), thread_num, std::ref(total_steps), i, std::ref(delta_mutexes), std::ref(barrier), std::ref(all_done));
     }
     for (auto &thread : threads) {
         thread.join();
@@ -263,6 +270,6 @@ int main(int argc, char *argv[]){
     //print_matrix(aboveland_drops);
     std::cout << "Rainfall simulation completed in " << total_steps << " time steps." << std::endl;
     std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
-    print_matrix(aboveland_drops);
+    //print_matrix(aboveland_drops);
     return EXIT_SUCCESS;
 }

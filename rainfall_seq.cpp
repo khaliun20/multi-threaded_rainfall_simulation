@@ -25,14 +25,17 @@ void absorb(std::vector<std::vector<double>> &aboveland_drops,
 }
 
 
-void print_matrix(std::vector<std::vector<double>> data){
+void print_matrix(std::vector<std::vector<double>>& data){
     for (int i = 0; i < data.size(); i++) {
         for (int j = 0; j < data[0].size(); j++) {
-            std::cout<< std::setw(8) << std::setprecision(6) << data[i][j];
+            std::cout << data[i][j] << " ";
+
         }
         std::cout << std::endl;
+       
     }
 }
+
 
 //return 1 if dry, 0 if not dry
 int check_dryness(std::vector<std::vector<double>> &aboveland_drops){
@@ -195,15 +198,16 @@ int main(int argc, char *argv[]){
     std::string elevation_file = argv[4];
     
     //initialize variables
-    std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(width));
-    std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(width));
-    std::vector<std::vector<double>> delta(height, std::vector<double>(width));
-    std::vector<std::vector<int>> elevation(height, std::vector<int>(width));\
-    std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction(height, std::vector<std::vector<std::pair<int, int>>>(width));
+    std::vector<std::vector<double>> aboveland_drops(height, std::vector<double>(height));
+    std::vector<std::vector<double>> absorbed_drops(height, std::vector<double>(height));
+    std::vector<std::vector<double>> delta(height, std::vector<double>(height));
+    std::vector<std::vector<int>> elevation(height, std::vector<int>(height));
+    std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction(height, std::vector<std::vector<std::pair<int, int>>>(height));
 
     //read the elevation file and compute trickle direction
     get_elevation_data(elevation_file, elevation);
     compute_trickle_direction(elevation, trickle_direction, height, width);
+    
 
     //start raining! 
     int total_steps = 0;
