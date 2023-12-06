@@ -16,6 +16,9 @@ public:
     ~RainfallSimulation();
     void run();
     void printMatrix();
+    int total_steps;
+    double time_took;
+    std::vector<std::vector<double>> absorbed_drops;
 
 private:
     int thread_num;
@@ -24,12 +27,11 @@ private:
     int dimension;
     int height;
     int width;
-    int total_steps;
-    double time_took;
+    
     std::string elevation_file;
 
     std::vector<std::vector<double>> aboveland_drops;
-    std::vector<std::vector<double>> absorbed_drops;
+    
     std::vector<std::vector<double>> delta;
     std::vector<std::vector<int>> elevation;
     std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction;
@@ -116,6 +118,7 @@ void RainfallSimulation::getElevationData() {
 
     file.close();
 }
+// calculate the lowest elevatin of the neighbors for a point
 
 void RainfallSimulation::computeTrickleDirection() {
     std::vector<std::vector<int>> directions{{-1, 0}, {1, 0}, {0, 1}, {0, -1}};
@@ -158,31 +161,39 @@ void RainfallSimulation::absorb(int i, int j) {
         }
 }
 
+//calculate the amount of water to trickle away from a point
 void RainfallSimulation::trickleAway(int i, int j) {
     if (aboveland_drops[i][j] > 0.0 && trickle_direction[i][j].size() > 0) {
             double trickle_amount = std::min(aboveland_drops[i][j], 1.0);
             aboveland_drops[i][j] -= trickle_amount;
             double trickle_per_neighbor = trickle_amount / trickle_direction[i][j].size();
             for (auto &pair : trickle_direction[i][j]) {
-                int neighbor_row = pair.first, neighbor_col = pair.second;
+                int neighbor_row = pair.first;
+                int neighbor_col = pair.second;
                 delta[neighbor_row][neighbor_col] += trickle_per_neighbor;
             }
         }
-
 }
 
+//update the amount of water at a point after trickle away -- add the trickle amount to the point
 void RainfallSimulation::updateAfterTrickle(int i, int j) {
     aboveland_drops[i][j] += delta[i][j];
     delta[i][j] = 0.0;
 }
 
 void RainfallSimulation::runSimulationThread(int index) {
+    std::cout << "Thread " << index << " started." << std::endl;
     int rows_per_thread = height / thread_num;
     int start_row = index * rows_per_thread;
     int end_row = (index + 1) * rows_per_thread;
     int step = 0; 
+    std::cout << "Thread " << index << " start row: " << start_row << std::endl;
     while (1) {
+        //mtx.lock();
         step++;
+        //mtx.unlock();
+        std::cout << "Thread " << index << " step: " << step << std::endl;
+        int local_done = 1;
         for (int i = start_row; i < end_row; i++) {
             for (int j = 0; j < width; j++) {
                 if (step <= time_steps) {
@@ -190,27 +201,21 @@ void RainfallSimulation::runSimulationThread(int index) {
                 }
                 absorb(i, j);
                 trickleAway(i, j);
-            }
-        }
-
-        pthread_barrier_wait(&barrier);
-
-        int local_done = 1;
-        for (int i = start_row; i < end_row; i++) {
-            for (int j = 0; j < width; j++) {
                 updateAfterTrickle(i, j);
                 if (aboveland_drops[i][j] > 0.0) {
                     local_done = 0;
                 }
             }
         }
+        pthread_barrier_wait(&barrier);
+
         mtx.lock();
         global_done = global_done && local_done;
         mtx.unlock();
         pthread_barrier_wait(&barrier);
         global_done = global_done && local_done;
         if (global_done == 1) {
-            total_steps = step;
+            total_steps = step-1;
             return;
         }
         pthread_barrier_wait(&barrier);
@@ -220,7 +225,14 @@ void RainfallSimulation::runSimulationThread(int index) {
     }
 }
 
-
+void printMatrixToFile(const std::vector<std::vector<double>>& data, std::ostream& os) {
+    for (int i = 0; i < data.size(); i++) {
+        for (int j = 0; j < data[0].size(); j++) {
+            os << data[i][j] << " ";
+        }
+        os << std::endl;
+    }
+}
 int main(int argc, char* argv[]) {
     if (argc != 6) {
         std::cerr << "Invalid number of arguments. Expected 5 arguments." << std::endl;
@@ -236,6 +248,25 @@ int main(int argc, char* argv[]) {
     RainfallSimulation simulation(thread_num, time_steps, absorb_rate, dimension, elevation_file);
     simulation.run();
     simulation.printMatrix();
+    std::ofstream outputFile("ptoutput.txt");
+
+    // Check if the file is open
+    if (!outputFile.is_open()) {
+        std::cerr << "Failed to open output file." << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // Write results to the file
+    outputFile << "Rainfall simulation completed in " << simulation.total_steps << " time steps." << std::endl;
+    outputFile << "Runtime:  " << simulation.time_took << " seconds" << std::endl;
+    outputFile << std::endl;
+    outputFile << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
+    
+    // Call your function to print the matrix to the file
+    printMatrixToFile(simulation.absorbed_drops, outputFile);
+
+    // Close the file
+    outputFile.close();
 
     return EXIT_SUCCESS;
 }

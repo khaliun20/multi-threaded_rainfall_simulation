@@ -184,6 +184,15 @@ void print_trickle_direction(std::vector<std::vector<std::vector<std::pair<int, 
     }
 }
 
+void printMatrixToFile(const std::vector<std::vector<double>>& data, std::ostream& os) {
+    for (int i = 0; i < data.size(); i++) {
+        for (int j = 0; j < data[0].size(); j++) {
+            os << data[i][j] << " ";
+        }
+        os << std::endl;
+    }
+}
+
 int main(int argc, char *argv[]){
     if (argc != 5) {
         std::cerr << "Invalid number of arguments. Expected 4 arguments." << std::endl;
@@ -225,8 +234,26 @@ int main(int argc, char *argv[]){
     std::cout << std::endl;
     std::cout << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
     print_matrix(absorbed_drops);
-    std::cout << "Rainfall simulation completed in " << total_steps << " time steps." << std::endl;
-    std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
+    
+    std::ofstream outputFile("output.txt");
+
+    // Check if the file is open
+    if (!outputFile.is_open()) {
+        std::cerr << "Failed to open output file." << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    // Write results to the file
+    outputFile << "Rainfall simulation completed in " << total_steps << " time steps." << std::endl;
+    outputFile << "Runtime:  " << time_took << " seconds" << std::endl;
+    outputFile << std::endl;
+    outputFile << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
+    
+    // Call your function to print the matrix to the file
+    printMatrixToFile(absorbed_drops, outputFile);
+
+    // Close the file
+    outputFile.close();
     return EXIT_SUCCESS;
 }
 
