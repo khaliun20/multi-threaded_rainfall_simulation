@@ -86,11 +86,11 @@ void trickle_away(std::vector<std::vector<double>> &aboveland_drops,
 
 }
    
-void update_after_trickle(std::vector<std::vector<double>> &absorbed_drops,
+void update_after_trickle(std::vector<std::vector<double>> &above_line_drops,
                         std::vector<std::vector<double>> &delta, int height, int width) {
     for (int i =0; i < height; i++){
         for (int j = 0; j <width; j++){
-            absorbed_drops[i][j] += delta[i][j];
+            above_line_drops[i][j] += delta[i][j];
             delta[i][j] = 0.0;
         }
     }
