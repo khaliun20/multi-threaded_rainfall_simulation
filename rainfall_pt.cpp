@@ -29,15 +29,12 @@ private:
     int width;
     
     std::string elevation_file;
-
     std::vector<std::vector<double>> aboveland_drops;
-    
     std::vector<std::vector<double>> delta;
     std::vector<std::vector<int>> elevation;
     std::vector<std::vector<std::vector<std::pair<int, int>>>> trickle_direction;
 
     pthread_barrier_t barrier;
-    std::mutex mtx;
     int global_done;
 
     void getElevationData();
@@ -47,6 +44,7 @@ private:
     void trickleAway(int i, int j);
     void updateAfterTrickle(int i, int j);
     void runSimulationThread(int index);
+    int checkDryness();
 };
 
 RainfallSimulation::RainfallSimulation(int thread_num, int time_steps, double absorb_rate, int dimension, const std::string& elevation_file)
@@ -85,15 +83,31 @@ void RainfallSimulation::printMatrix() {
     std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
     std::cout << std::endl;
     std::cout<< "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
-
+   
     for (int i = 0; i < absorbed_drops.size(); i++) {
         for (int j = 0; j < absorbed_drops[0].size(); j++) {
             std::cout << absorbed_drops[i][j]<< " ";
         }
         std::cout << std::endl;
     }
+
     
-   
+}
+//return 1 if dry, 0 if not dry
+int RainfallSimulation::checkDryness(){
+    int dry = 1;  
+    for (int i = 0; i < aboveland_drops.size(); i++) {
+        for (int j = 0; j < aboveland_drops[0].size(); j++) {
+            if (aboveland_drops[i][j] > 0.0 ) {
+                dry = 0;
+                break;
+            }
+        }
+        if (dry == 0) {
+            break;
+        }
+    }
+    return dry;
 }
 
 void RainfallSimulation::getElevationData() {
@@ -187,7 +201,7 @@ void RainfallSimulation::runSimulationThread(int index) {
     int start_row = index * rows_per_thread;
     int end_row = (index + 1) * rows_per_thread;
     int step = 0; 
-    while (1) {
+    while (global_done == 0) {
         step++;
         for (int i = start_row; i < end_row; i++) {
             for (int j = 0; j < width; j++) {
@@ -198,33 +212,23 @@ void RainfallSimulation::runSimulationThread(int index) {
                 trickleAway(i, j);
             }
         }
-
         pthread_barrier_wait(&barrier);
-
-        int local_done = 1;
         for (int i = start_row; i < end_row; i++) {
             for (int j = 0; j < width; j++) {
                 updateAfterTrickle(i, j);
-                if (aboveland_drops[i][j] > 0.0) {
-                    local_done = 0;
-                }
             }
         }
-        {
-        std::lock_guard<std::mutex> lock(mtx);
-        global_done = global_done && local_done;
+        //thread 1 check if the program can exist.
+        if(index == 0){
+            int dry = checkDryness();
+            if(dry == 1){
+                global_done = 1;
+                total_steps = step;
+            }   
         }
-        pthread_barrier_wait(&barrier);
-        global_done = global_done && local_done;
-        if (global_done == 1) {
-            total_steps = step;
-            return;
+         pthread_barrier_wait(&barrier);
         }
-        pthread_barrier_wait(&barrier);
-        std::lock_guard<std::mutex> lock(mtx);
-        global_done = 1;
     }
-}
 
 
 void printMatrixToFile(const std::vector<std::vector<double>>& data, std::ostream& os) {
@@ -250,24 +254,20 @@ int main(int argc, char* argv[]) {
     RainfallSimulation simulation(thread_num, time_steps, absorb_rate, dimension, elevation_file);
     simulation.run();
     simulation.printMatrix();
+
     std::ofstream outputFile("ptoutput.txt");
 
-    // Check if the file is open
     if (!outputFile.is_open()) {
         std::cerr << "Failed to open output file." << std::endl;
         return EXIT_FAILURE;
     }
 
-    // Write results to the file
     outputFile << "Rainfall simulation completed in " << simulation.total_steps << " time steps." << std::endl;
     outputFile << "Runtime:  " << simulation.time_took << " seconds" << std::endl;
     outputFile << std::endl;
     outputFile << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
     
-    // Call your function to print the matrix to the file
     printMatrixToFile(simulation.absorbed_drops, outputFile);
-
-    // Close the file
     outputFile.close();
 
     return EXIT_SUCCESS;

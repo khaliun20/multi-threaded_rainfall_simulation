@@ -94,9 +94,8 @@ void update_after_trickle(std::vector<std::vector<double>> &above_line_drops,
             delta[i][j] = 0.0;
         }
     }
-    
-
 }
+
 void run_simulation(int time_steps, double absorb_rate, 
                         std::vector<std::vector<double>> &aboveland_drops, 
                         std::vector<std::vector<double>> &absorbed_drops,
@@ -217,7 +216,6 @@ int main(int argc, char *argv[]){
     get_elevation_data(elevation_file, elevation);
     compute_trickle_direction(elevation, trickle_direction, height, width);
     
-
     //start raining! 
     int total_steps = 0;
     clock_t start = clock();
@@ -233,7 +231,7 @@ int main(int argc, char *argv[]){
     std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
     std::cout << std::endl;
     std::cout << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
-    print_matrix(absorbed_drops);
+    //print_matrix(absorbed_drops);
     
     std::ofstream outputFile("output.txt");
 
@@ -242,7 +240,6 @@ int main(int argc, char *argv[]){
         std::cerr << "Failed to open output file." << std::endl;
         return EXIT_FAILURE;
     }
-
     // Write results to the file
     outputFile << "Rainfall simulation completed in " << total_steps << " time steps." << std::endl;
     outputFile << "Runtime:  " << time_took << " seconds" << std::endl;
