@@ -85,14 +85,14 @@ void RainfallSimulation::printMatrix() {
     std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
     std::cout << std::endl;
     std::cout<< "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
-    /*
+    
     for (int i = 0; i < absorbed_drops.size(); i++) {
         for (int j = 0; j < absorbed_drops[0].size(); j++) {
             std::cout << absorbed_drops[i][j]<< " ";
         }
         std::cout << std::endl;
     }
-    */
+    
 
     
 }
@@ -258,7 +258,7 @@ int main(int argc, char* argv[]) {
     simulation.run();
     simulation.printMatrix();
 
-    /*
+  
     std::ofstream outputFile("ptoutput.txt");
 
     if (!outputFile.is_open()) {
@@ -271,9 +271,9 @@ int main(int argc, char* argv[]) {
     outputFile << std::endl;
     outputFile << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
     
-    //printMatrixToFile(simulation.absorbed_drops, outputFile);
+    printMatrixToFile(simulation.absorbed_drops, outputFile);
     outputFile.close();
-    */
+    
 
     return EXIT_SUCCESS;
 }
