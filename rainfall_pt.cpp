@@ -4,7 +4,7 @@
 #include <vector>
 #include <mutex>
 #include <thread>
-#include <ctime>
+#include <chrono>
 #include <pthread.h>
 #include <climits>
 
@@ -65,7 +65,7 @@ RainfallSimulation::~RainfallSimulation() {
 }
 
 void RainfallSimulation::run() {
-    std::clock_t start = std::clock();
+    auto start_time = std::chrono::steady_clock::now();
     std::vector<std::thread> threads;
     for (int i = 0; i < thread_num; i++) {
         threads.emplace_back(&RainfallSimulation::runSimulationThread, this, i);
@@ -74,8 +74,10 @@ void RainfallSimulation::run() {
     for (auto& thread : threads) {
         thread.join();
     }
-    std::clock_t end = std::clock();
-    time_took = (end - start) /  CLOCKS_PER_SEC;
+    auto end_time = std::chrono::steady_clock::now();
+    auto elapsed_time = std::chrono::duration_cast<std::chrono::seconds>(end_time - start_time);
+    time_took = elapsed_time.count();
+
 }
 
 void RainfallSimulation::printMatrix() {
@@ -83,13 +85,14 @@ void RainfallSimulation::printMatrix() {
     std::cout << "Runtime:  " << time_took << " seconds" << std::endl;
     std::cout << std::endl;
     std::cout<< "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
-   
+    /*
     for (int i = 0; i < absorbed_drops.size(); i++) {
         for (int j = 0; j < absorbed_drops[0].size(); j++) {
             std::cout << absorbed_drops[i][j]<< " ";
         }
         std::cout << std::endl;
     }
+    */
 
     
 }
@@ -255,6 +258,7 @@ int main(int argc, char* argv[]) {
     simulation.run();
     simulation.printMatrix();
 
+    /*
     std::ofstream outputFile("ptoutput.txt");
 
     if (!outputFile.is_open()) {
@@ -267,8 +271,9 @@ int main(int argc, char* argv[]) {
     outputFile << std::endl;
     outputFile << "The following grid shows the number of raindrops absorbed at each point: " << std::endl;
     
-    printMatrixToFile(simulation.absorbed_drops, outputFile);
+    //printMatrixToFile(simulation.absorbed_drops, outputFile);
     outputFile.close();
+    */
 
     return EXIT_SUCCESS;
 }

@@ -15,7 +15,7 @@ $(EXECUTABLE_SEQ): $(SOURCE_SEQ)
 
 # Rule to build the parallel executable
 $(EXECUTABLE_PARALLEL): $(SOURCE_PARALLEL)
-	$(CXX) $(CXXFLAGS) -o $@ $< -pthread
+	$(CXX) $(CXXFLAGS) -o $@ $< -pthread 
 
 clean:
 	rm -f $(EXECUTABLE_SEQ) $(EXECUTABLE_PARALLEL)
